@@ -1,6 +1,6 @@
 # 🚀 Neurona Landing Page – Tech Stack & Arquitectura
 
-Documento técnico completo del stack tecnológico, dependencias, patrones de diseño y flujos de integración del proyecto **Neurona Landing Page**.
+Documento técnico completo del stack tecnológico, dependencias, patrones de diseño, flujos de integración y estrategias de despliegue del proyecto **Neurona Landing Page**.
 
 ---
 
@@ -14,13 +14,14 @@ Documento técnico completo del stack tecnológico, dependencias, patrones de di
 | **Framework Core** | [React](https://react.dev/) | `^18.3.1` | Biblioteca base de interfaz de usuario. |
 | **Estilos** | [Tailwind CSS](https://tailwindcss.com/) | `^3.4.17` | Utility-first CSS framework con soporte de diseño oscuro/claro. |
 | **Componentes UI** | [shadcn/ui](https://ui.shadcn.com/) / [Radix UI](https://www.radix-ui.com/) | Primitivas `^1.x` - `^2.x` | Componentes accesibles, sin estilos forzados, totalmente personalizables. |
-| **Enrutamiento** | [React Router DOM](https://reactrouter.com/) | `^6.30.1` | Gestión de rutas SPA (`/`, 404, etc.). |
+| **Enrutamiento** | [React Router DOM](https://reactrouter.com/) | `^6.30.1` | Gestión de rutas SPA (`/`, 404, etc.) con soporte de rewrites. |
 | **Gestión de Estado & Cache** | [TanStack React Query](https://tanstack.com/query) | `^5.83.0` | Manejo de peticiones asíncronas y caching en memoria. |
 | **Formularios y Validación** | [React Hook Form](https://react-hook-form.com/) + [Zod](https://zod.dev/) | `^7.61.1` / `^3.25.76` | Formularios performantes y validación de esquemas tipados. |
 | **Internacionalización (i18n)** | [i18next](https://www.i18next.com/) + [react-i18next](https://react.i18next.com/) | `^25.4.2` / `^15.7.2` | Soporte multilingüe en tiempo real (Español / Inglés). |
 | **Animaciones & Gráficos** | `tailwindcss-animate`, `react-countup`, `recharts` | Varios | Transiciones fluidas, contadores animados y visualización de datos. |
 | **Iconografía** | [Lucide React](https://lucide.dev/) | `^0.462.0` | Conjunto consistente de iconos vectoriales. |
 | **Automatización & Backend** | [n8n](https://n8n.io/) Workflow | Custom Webhooks | Ingesta de leads, Google Meet, Google Sheets y confirmación por Email. |
+| **Modo Demostración** | `simulateDemoLead()` en `leadService.ts` | Local | Simulación realista con agendamiento dinámico a Calendly. |
 
 ---
 
@@ -37,15 +38,12 @@ Documento técnico completo del stack tecnológico, dependencias, patrones de di
 - `date-fns` (`^3.6.0`) y `react-day-picker` (`^8.10.1`): Selectores de fecha para agendamiento de citas.
 - `react-intersection-observer` (`^9.16.0`): Disparo de animaciones cuando los componentes entran al viewport.
 
-### 2.3 Bot de Automatización e Ingesta de Leads (n8n)
+### 2.3 Bot de Automatización e Ingesta de Leads (n8n & Modo Demo)
 - **Servicio**: `src/services/leadService.ts`
 - **Flujo**:
   1. Frontend envía `POST` al webhook con `name`, `email`, `source`, `meeting_at`.
-  2. n8n sanitiza, valida y responde HTTP `202 Accepted` de inmediato.
-  3. n8n genera evento en **Google Calendar** con enlace a **Google Meet**.
-  4. Realiza deduplicación contra **Google Sheets** (hoja `Leads`).
-  5. Envía correo SMTP con link de confirmación al lead.
-  6. En caso de payload erróneo, responde `400` y registra en hoja `Errors`.
+  2. Si `VITE_N8N_WEBHOOK_URL="mock"` o el servidor no responde: se ejecuta **Modo Demo**, retornando agendamiento interactivo en Calendly en ~700ms.
+  3. Si el servidor n8n está activo: sanitiza, responde `202 Accepted`, genera cita en Google Meet, deduplica en Google Sheets y envía email SMTP de confirmación.
 
 ---
 
@@ -59,7 +57,7 @@ NeuronaPage/
 │   ├── My workflow.json          # Workflow JSON para n8n
 │   ├── README.md                 # Documentación del flujo de leads
 │   └── README_workflow_meet...   # Guía detallada de Google Meet + Sheets
-├── public/                       # Assets estáticos servidos directamente
+├── public/                       # Assets estáticos y rewrites (_redirects)
 ├── src/
 │   ├── assets/                   # Logos, imágenes y recursos estáticos
 │   ├── components/               # Componentes de la interfaz
@@ -74,14 +72,16 @@ NeuronaPage/
 │   │   ├── Products.tsx          # Catálogo de productos
 │   │   └── Solutions.tsx         # Soluciones y servicios
 │   ├── hooks/                    # Hooks reutilizables (useToast, useLanguage, useMobile)
-│   ├── i18n/                     # Configuración y diccionarios de traducción
-│   │   ├── en/                   # Traducciones en inglés
-│   │   └── es/                   # Traducciones en español
+│   ├── i18n/                     # Configuración y diccionarios de traducción (ES / EN)
 │   ├── lib/                      # Funciones utilitarias (cn, utils)
 │   ├── pages/                    # Vistas principales (Index.tsx, NotFound.tsx)
 │   ├── services/                 # Servicios de comunicación (leadService.ts)
 │   ├── App.tsx                   # Proveedores globales, rutas y layout
 │   └── main.tsx                  # Punto de entrada de la aplicación
+├── AGENTS.md                     # Reglas para agentes de IA
+├── DEPLOYMENT.md                 # Guía paso a paso para despliegue en Vercel / Netlify
+├── STACK.md                      # Este documento
+├── vercel.json                   # Configuración de rewrites SPA para Vercel
 ├── package.json                  # Dependencias y scripts
 ├── tailwind.config.ts            # Configuración de Tailwind CSS y temas
 ├── tsconfig.json                 # Configuración de TypeScript
@@ -106,7 +106,7 @@ NeuronaPage/
 
 | Variable | Descripción | Valor por defecto / Ejemplo |
 | :--- | :--- | :--- |
-| `VITE_N8N_WEBHOOK_URL` | URL del Webhook de n8n para ingesta de leads | `https://n8n.3-134-22-156.sslip.io/webhook/leads-meet-zz` |
+| `VITE_N8N_WEBHOOK_URL` | URL del Webhook de n8n o `'mock'` para demo | `'mock'` (por defecto ejecuta simulación demo para portafolios) |
 
 ---
 
