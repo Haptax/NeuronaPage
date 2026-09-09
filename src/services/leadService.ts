@@ -1,4 +1,4 @@
-// Servicio para manejar leads con el bot de n8n
+// Servicio para manejar leads con el bot de n8n / Modo Demo
 
 export interface Lead {
   name: string;
@@ -22,9 +22,7 @@ interface WebhookResponse {
   ok?: boolean;
 }
 
-const N8N_WEBHOOK_URL = 
-  import.meta.env.VITE_N8N_WEBHOOK_URL || 
-  'https://n8n.3-134-22-156.sslip.io/webhook/leads-meet-zz';
+const N8N_WEBHOOK_URL = import.meta.env.VITE_N8N_WEBHOOK_URL || 'mock';
 
 // ——— Validaciones ———
 function validateName(name: string): boolean {
@@ -59,8 +57,28 @@ async function safeJson(resp: Response): Promise<WebhookResponse> {
   }
 }
 
-// ——— Envío con timeout ———
-async function submitLead(lead: Lead, timeoutMs = 10000): Promise<LeadResponse> {
+// ——— Simulación Modo Demo para Portafolio ———
+async function simulateDemoLead(lead: Lead): Promise<LeadResponse> {
+  // Simular latencia realista de red (700ms)
+  await new Promise((resolve) => setTimeout(resolve, 700));
+
+  return {
+    status: 'accepted',
+    message: '¡Lead procesado exitosamente (Modo Portafolio)!',
+    meetingLink: `https://calendly.com/alvaro-quiroga-tw/30min?name=${encodeURIComponent(
+      lead.name.trim()
+    )}&email=${encodeURIComponent(lead.email.trim())}`,
+    meetingTime: lead.meeting_at || new Date().toISOString(),
+  };
+}
+
+// ——— Envío con timeout y fallback a Demo ———
+async function submitLead(lead: Lead, timeoutMs = 6000): Promise<LeadResponse> {
+  // Si está explícitamente en modo mock o no hay URL configurada
+  if (!N8N_WEBHOOK_URL || N8N_WEBHOOK_URL === 'mock') {
+    return simulateDemoLead(lead);
+  }
+
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -69,7 +87,7 @@ async function submitLead(lead: Lead, timeoutMs = 10000): Promise<LeadResponse> 
       name: lead.name.trim(),
       email: lead.email.trim().toLowerCase(),
       source: lead.source || 'cristal-chat',
-      meeting_at: lead.meeting_at, // ideal en ISO: new Date().toISOString()
+      meeting_at: lead.meeting_at,
     };
 
     const response = await fetch(N8N_WEBHOOK_URL, {
@@ -81,33 +99,22 @@ async function submitLead(lead: Lead, timeoutMs = 10000): Promise<LeadResponse> 
 
     const data = await safeJson(response);
 
-    // Error HTTP
     if (!response.ok) {
-      return {
-        status: 'error',
-        message: data?.message || `Error HTTP ${response.status}`,
-      };
+      // Fallback a simulación demo si el backend retorna error de servidor
+      console.warn('Webhook n8n no disponible. Usando fallback de demostración para portafolio.');
+      return simulateDemoLead(lead);
     }
 
-    // ✅ Interpretar la respuesta de n8n
     return {
       status: 'accepted',
       message: data?.message || 'Lead procesado exitosamente',
-      meetingLink: data?.bookingUrl || data?.meetingLink, // n8n devuelve bookingUrl
+      meetingLink: data?.bookingUrl || data?.meetingLink,
       meetingTime: data?.meetingTime,
     };
   } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      return {
-        status: 'error',
-        message: 'Timeout al contactar el webhook. Intenta nuevamente.',
-      };
-    }
-    console.error('Error submitting lead:', error);
-    return {
-      status: 'error',
-      message: 'Error de conexión. Por favor, intenta nuevamente.',
-    };
+    console.warn('Error de conexión con webhook n8n. Activando respuesta de demostración para portafolio.', error);
+    // Para que el portafolio nunca quede roto si el servidor AWS está apagado
+    return simulateDemoLead(lead);
   } finally {
     clearTimeout(id);
   }
